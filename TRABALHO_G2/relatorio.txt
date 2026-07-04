@@ -1,0 +1,237 @@
+INF1018: Software Básico - Trabalho G2: Gerador Dinâmico de Funções
+
+Alunos:
+Anna Clara Luna (2410494 - 3WC)
+Jean Michel (2410531 - 3WA)
+
+===============================================================
+
+1. Descrição
+
+A função cria_func gera dinamicamente, em um vetor de bytes (codigo[]), o código de máquina de uma nova função que chama a função original f com os parâmetros descritos no array params.
+
+Parâmetros podem ser:
+
+PARAM: repassados da nova função para a original
+FIX: constante gravada diretamente no código gerado
+IND: valor lido em tempo de execução de uma variável (por endereço)
+
+===============================================================
+
+2. Estratégia de implementação
+
+A função gerada inicia com um prólogo convencional:
+
+pushq %rbp
+movq %rsp, %rbp
+
+Os argumentos recebidos são copiados para registradores auxiliares, permitindo reorganizar os parâmetros da chamada da função original sem perder os valores recebidos pela nova função:
+
+movq %rdi, %r10
+movq %rsi, %r11
+movq %rdx, %rcx
+
+Para cada parâmetro i (correspondente aos registradores %rdi, %rsi e %rdx), é gerado código de acordo com sua descrição:
+
+PARAM:
+move o argumento recebido pela função gerada para o registrador correspondente da chamada da função original.
+
+FIX INT:
+movl $val, %edi/%esi/%edx
+
+FIX PTR:
+movabsq $ptr, %rdi/%rsi/%rdx
+
+IND INT:
+movabsq $addr, %rax
+movl (%rax), %edi/%esi/%edx
+
+IND PTR:
+movabsq $addr, %rax
+movq (%rax), %rdi/%rsi/%rdx
+
+A função original é chamada indiretamente:
+
+movabsq $f, %rax
+call *%rax
+
+A função gerada finaliza com:
+
+leave
+ret
+
+===============================================================
+
+3. Testes realizados
+
+Todo o código foi desenvolvido no GitHub Codespaces. No repositório, além do arquivo cria_func.c, havia cria_func.h (disponibilizado no enunciado do trabalho) e teste.c.
+
+Os testes foram compilados com:
+
+gcc -Wall -Wa,--execstack -o teste cria_func.c teste.c
+
+E executados com:
+
+./teste
+
+As lógicas das funções testadas encontram-se abaixo:
+
+int identidade(int x) {
+    return x;
+}
+
+int mult(int x, int y) {
+    return x * y;
+}
+
+int tres_args(int a, int b, int c) {
+    return a + b * 10 + c * 100;
+}
+
+int soma(int x, int y) {
+    return x + y;
+}
+
+----------
+
+Teste #1: 
+identidade(x): (INT) PARAM
+
+Cria f(x) = x
+
+Testes: 42, 0, -99
+Resultado: 42, 0, -99
+
+----------
+
+Teste #2:
+mult(x, 10): (INT) PARAM + (INT) FIX
+
+Cria f(x) = mult(x, 10)
+
+Testes: x = 1, 5, 10, -3
+Resultados: 10, 50, 100, -30
+
+----------
+
+Teste #3:
+mult(3, y): (INT) FIX + (INT) PARAM
+
+Cria f(y) = mult(3, y)
+
+Testes: y = 4, 0, -5
+Resultados: 12, 0, -15
+
+----------
+
+Teste #4:
+mult(2, 7): (INT) FIX + (INT) FIX
+
+Cria f() sem parâmetros, sempre retorna 14.
+
+Resultado: 14
+
+----------
+
+Teste #5:
+mult(i, 10): (INT) IND + (INT) FIX
+
+Cria f() que lê variável i em tempo de execução.
+
+Testes: i = 1, 5, -3
+Resultados: 10, 50, -30
+
+----------
+
+Teste #6:
+tres_args(1, b, 3): (INT) FIX + (INT) PARAM + (INT) FIX
+
+Cria f(b) = tres_args(1, b, 3) = 301 + b*10
+
+Testes: b = 0, 1, 5
+Resultados: 301, 311, 351
+
+----------
+
+Teste #7:
+tres_args(a, b, c): (INT) PARAM + (INT) IND + (INT) PARAM
+
+Cria f(a, c) = tres_args(a, var_b, c), var_b lida em tempo de execução.
+
+Testes: f(1,3) com var_b = 2 e var_b = 5
+Resultados: 321, 351
+
+----------
+
+Teste #8:
+tres_args(a, b, c): (INT) PARAM + (INT) PARAM + (INT) PARAM
+
+Cria f(a, b, c) = tres_args(a, b, c)
+
+Testes: (2,3,4), (0,0,0), (1,1,1)
+Resultados: 432, 0, 111
+
+----------
+
+Teste #9:
+memcmp(fixa, candidata, n): (PTR) FIX + (PTR) PARAM + (INT) PARAM
+
+Cria mesmo_prefixo(candidata, n) = memcmp(fixa, candidata, n)
+
+Testes: candidata com mesmo prefixo de 12 caracteres e candidata diferente após 16 caracteres
+Resultados: 0 (strings iguais nos primeiros 12 caracteres) e valor diferente de 0 (strings diferentes)
+
+----------
+
+Teste #10:
+soma(*pa, *pb): (INT) IND + (INT) IND
+
+Cria f() = soma(*pa, *pb), ambos lidos em tempo de execução.
+
+Testes: (pa = 10, pb = 20), (pa = -5, pb = 5), (pa = 0, pb = 0)
+Resultados: 30, 0, 0
+
+----------
+
+Teste #11:
+memcmp(fixa, *p_cand, n): (PTR) FIX + (PTR) IND + (INT) PARAM
+
+Cria f(n) = memcmp(fixa, *p_cand, n), onde p_cand é um char* lido em tempo de execução (IND sobre ponteiro).
+
+Testes:
+f(11) com p_cand = string_igual
+f(11) com p_cand = string_diferente
+f(5) com p_cand = string_igual
+
+Resultados: 0 (strings iguais), valor diferente de 0 (strings diferentes), 0 (prefixo de 5 caracteres igual)
+
+===============================================================
+
+4. Conclusão
+
+A implementação realizada atende aos requisitos propostos no enunciado. Foram realizados testes com diferentes combinações de parâmetros do tipo PARAM, FIX e IND, utilizando valores inteiros e ponteiros em funções com um, dois e três argumentos.
+
+Os resultados obtidos mostraram que a função gerada dinamicamente consegue repassar parâmetros corretamente, utilizar valores constantes previamente definidos e ler valores de variáveis em tempo de execução.
+
+Nos casos em que foi utilizado o tipo IND, observou-se que o valor da variável é consultado a cada chamada da função gerada, refletindo sempre seu conteúdo atual.
+
+Também foram realizados testes com a função memcmp, confirmando o funcionamento correto da passagem de ponteiros e da chamada de funções externas.
+
+Todos os testes executados apresentaram os resultados esperados.
+
+===============================================================
+
+5. Observação
+
+Para tornar o código mais organizado e facilitar a geração das instruções de máquina, foram criadas funções auxiliares responsáveis por inserir bytes no vetor codigo[].
+
+insere(...):
+insere uma sequência arbitrária de bytes (opcodes e demais partes fixas das instruções) e atualiza a posição atual no vetor.
+
+insere_int(...):
+insere um valor inteiro de 32 bits no formato little-endian, sendo utilizada principalmente para os operandos imediatos das instruções movl.
+
+insere_ptr(...):
+insere um endereço (ponteiro) de 64 bits no formato little-endian, sendo utilizada para instruções que precisam carregar endereços de funções ou variáveis em registradores.
+
+Essas funções não alteram a lógica da geração dinâmica de código, mas tornam a implementação mais legível e reduzem a repetição de operações de manipulação do vetor de bytes.
